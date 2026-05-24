@@ -365,7 +365,7 @@ function startSSE() {
     const line = data.line || '';
     const log = document.getElementById('progressLog');
     log.textContent = line;
-    const timeMatch = line.match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/);
+    const timeMatch = line.match(/time=(\\d+):(\\d+):(\\d+(?:\\.\\d+)?)/);
     if (timeMatch) {
       const elapsed = parseInt(timeMatch[1]) * 3600 + parseInt(timeMatch[2]) * 60 + parseFloat(timeMatch[3]);
       if (totalSeconds) {
@@ -375,7 +375,7 @@ function startSSE() {
         document.getElementById('progressBar').style.width = (elapsed % 30) / 30 * 100 + '%';
       }
     }
-    const durMatch = line.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+    const durMatch = line.match(/Duration:\\s*(\\d+):(\\d+):(\\d+(?:\\.\\d+)?)/);
     if (durMatch) {
       totalSeconds = parseInt(durMatch[1]) * 3600 + parseInt(durMatch[2]) * 60 + parseFloat(durMatch[3]);
     }
