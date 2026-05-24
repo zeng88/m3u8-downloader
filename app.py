@@ -63,7 +63,155 @@ def build_ffmpeg_cmd(m3u8: str, output_path: str) -> list[str]:
     ]
 
 
-HTML_CONTENT = "<html><body><h1>Coming soon</h1></body></html>"
+HTML_CONTENT = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M3U8 下载助手</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0f1117; color: #c9d1d9; min-height: 100vh; padding: 2rem 1rem;
+  }
+  .container { max-width: 780px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; font-weight: 700; color: #f0f6fc; margin-bottom: .4rem; }
+  .tagline { font-size: .9rem; color: #6e7681; margin-bottom: 2rem; }
+  .warn-banner {
+    background: #3d1f00; border: 1px solid #d68910; border-radius: 8px;
+    padding: .8rem 1.2rem; margin-bottom: 1.5rem; color: #f0b429;
+    font-size: .88rem; display: none;
+  }
+  .card {
+    background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+    padding: 1.4rem; margin-bottom: 1.2rem;
+  }
+  .card-label {
+    font-size: .72rem; text-transform: uppercase; letter-spacing: .08em;
+    color: #58a6ff; font-weight: 600; margin-bottom: .9rem;
+  }
+  .input-row { display: flex; gap: .6rem; }
+  input[type="text"] {
+    flex: 1; padding: .65rem 1rem; background: #0d1117;
+    border: 1px solid #30363d; border-radius: 8px; color: #c9d1d9;
+    font-size: .92rem; outline: none; transition: border-color .2s;
+  }
+  input[type="text"]:focus { border-color: #58a6ff; }
+  input[type="text"]::placeholder { color: #484f58; }
+  button {
+    padding: .65rem 1.2rem; border: none; border-radius: 8px; cursor: pointer;
+    font-size: .88rem; font-weight: 600; transition: all .15s; white-space: nowrap;
+  }
+  .btn-blue { background: #1f6feb; color: #fff; }
+  .btn-blue:hover { background: #388bfd; }
+  .btn-blue:disabled { background: #1f3a5f; color: #6e7681; cursor: not-allowed; }
+  .btn-green { background: #238636; color: #fff; }
+  .btn-green:hover { background: #2ea043; }
+  .btn-green:disabled { background: #1a3624; color: #6e7681; cursor: not-allowed; }
+  .btn-red { background: #b91c1c; color: #fff; }
+  .btn-red:hover { background: #dc2626; }
+  .btn-ghost { background: transparent; color: #c9d1d9; border: 1px solid #30363d; }
+  .btn-ghost:hover { background: #21262d; }
+  .links-list { display: flex; flex-direction: column; gap: .5rem; }
+  .link-item {
+    display: flex; align-items: center; gap: .8rem; padding: .7rem .9rem;
+    background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+    cursor: pointer; transition: border-color .15s;
+  }
+  .link-item:hover { border-color: #58a6ff; }
+  .link-item.selected { border-color: #58a6ff; background: #0d2045; }
+  .link-item input[type="radio"] { accent-color: #58a6ff; flex-shrink: 0; }
+  .link-url { font-size: .82rem; color: #8b949e; word-break: break-all; font-family: monospace; }
+  .empty-hint { color: #484f58; font-size: .88rem; text-align: center; padding: 1rem; }
+  .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
+  @media (max-width: 540px) { .config-grid { grid-template-columns: 1fr; } }
+  .config-item label { display: block; font-size: .78rem; color: #8b949e; margin-bottom: .4rem; }
+  .cmd-block {
+    background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+    padding: 1rem; font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: .82rem; color: #7ee787; word-break: break-all;
+    white-space: pre-wrap; min-height: 3rem; margin-bottom: .8rem;
+  }
+  .action-row { display: flex; gap: .6rem; flex-wrap: wrap; }
+  .progress-wrap { margin-top: 1rem; display: none; }
+  .progress-bar-bg { background: #21262d; border-radius: 4px; height: 6px; overflow: hidden; margin-bottom: .6rem; }
+  .progress-bar { height: 100%; background: #1f6feb; width: 0%; transition: width .3s; border-radius: 4px; }
+  .progress-log {
+    background: #0d1117; border: 1px solid #21262d; border-radius: 6px;
+    padding: .6rem .8rem; font-family: monospace; font-size: .78rem;
+    color: #6e7681; max-height: 120px; overflow-y: auto;
+  }
+  .spinner {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid #30363d; border-top-color: #58a6ff;
+    border-radius: 50%; animation: spin .7s linear infinite;
+    vertical-align: middle; margin-right: .4rem;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .toast {
+    position: fixed; bottom: 2rem; right: 2rem; background: #238636; color: #fff;
+    padding: .8rem 1.4rem; border-radius: 8px; font-size: .9rem; font-weight: 600;
+    opacity: 0; transition: opacity .3s; pointer-events: none;
+  }
+  .toast.error { background: #b91c1c; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>M3U8 下载助手</h1>
+  <p class="tagline">输入视频网址，自动提取 m3u8 链接并生成 ffmpeg 下载命令</p>
+  <div class="warn-banner" id="ffmpegWarn">
+    ⚠ 未检测到 ffmpeg，请先安装：<code>brew install ffmpeg</code>
+  </div>
+  <div class="card">
+    <div class="card-label">① 输入视频网址</div>
+    <div class="input-row">
+      <input type="text" id="urlInput" placeholder="https://example.com/video/12345" />
+      <button class="btn-blue" id="analyzeBtn" onclick="doAnalyze()">分析链接</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-label">② 发现的 M3U8 链接</div>
+    <div id="linksList"><div class="empty-hint">输入网址后点击"分析链接"</div></div>
+  </div>
+  <div class="card">
+    <div class="card-label">③ 下载配置</div>
+    <div class="config-grid">
+      <div class="config-item">
+        <label>保存目录</label>
+        <div class="input-row">
+          <input type="text" id="dirInput" placeholder="/Users/you/Downloads" oninput="updateCmd()" />
+          <button class="btn-ghost" onclick="doPickDir()">选择</button>
+        </div>
+      </div>
+      <div class="config-item">
+        <label>文件名（不含扩展名）</label>
+        <input type="text" id="filenameInput" placeholder="my-video" oninput="updateCmd()" />
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-label">④ ffmpeg 命令</div>
+    <div class="cmd-block" id="cmdBlock">（选择 M3U8 链接并填写配置后自动生成）</div>
+    <div class="action-row">
+      <button class="btn-ghost" onclick="doCopy()">复制命令</button>
+      <button class="btn-green" id="executeBtn" onclick="doExecute()">开始下载</button>
+    </div>
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
+      <div class="progress-log" id="progressLog"></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+PLACEHOLDER_JS
+</script>
+</body>
+</html>
+"""
 
 
 @asynccontextmanager
