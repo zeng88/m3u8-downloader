@@ -1,9 +1,13 @@
+import json
+import os
 import re
+import shlex
 import shutil
 import subprocess
 import threading
 from contextlib import asynccontextmanager
 from typing import Optional, AsyncGenerator
+from urllib.parse import urlparse
 
 import requests as http_requests
 import uvicorn
@@ -43,15 +47,20 @@ def extract_m3u8_links(html: str) -> list[str]:
     return found
 
 
-def build_ffmpeg_cmd(m3u8: str, output_path: str) -> str:
-    return (
-        f'ffmpeg -threads 0 '
-        f'-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 '
-        f'-user_agent "{USER_AGENT}" '
-        f'-i "{m3u8}" '
-        f'-c copy -bsf:a aac_adtstoasc -y '
-        f'"{output_path}"'
-    )
+def build_ffmpeg_cmd(m3u8: str, output_path: str) -> list[str]:
+    return [
+        "ffmpeg",
+        "-threads", "0",
+        "-reconnect", "1",
+        "-reconnect_streamed", "1",
+        "-reconnect_delay_max", "5",
+        "-user_agent", USER_AGENT,
+        "-i", m3u8,
+        "-c", "copy",
+        "-bsf:a", "aac_adtstoasc",
+        "-y",
+        output_path,
+    ]
 
 
 HTML_CONTENT = "<html><body><h1>Coming soon</h1></body></html>"
@@ -93,7 +102,6 @@ async def analyze(body: AnalyzeRequest):
     if not url.startswith("http"):
         return JSONResponse({"error": "请输入有效的 http/https 网址"}, status_code=400)
     try:
-        from urllib.parse import urlparse
         parsed = urlparse(url)
         referer = f"{parsed.scheme}://{parsed.netloc}/"
         resp = http_requests.get(url, timeout=15, headers={
@@ -117,24 +125,25 @@ async def analyze(body: AnalyzeRequest):
 
 @app.post("/pick-dir")
 async def pick_dir():
-    result = {"path": ""}
-    event = threading.Event()
-
-    def _open_dialog():
-        import tkinter as tk
-        from tkinter import filedialog
-        root = tk.Tk()
-        root.withdraw()
-        root.wm_attributes("-topmost", True)
-        path = filedialog.askdirectory(title="选择下载目录")
-        root.destroy()
-        result["path"] = path or ""
-        event.set()
-
-    t = threading.Thread(target=_open_dialog, daemon=True)
-    t.start()
-    event.wait(timeout=120)
-    return result
+    import asyncio
+    script = (
+        "import tkinter as tk; from tkinter import filedialog; "
+        "root = tk.Tk(); root.withdraw(); root.wm_attributes('-topmost', True); "
+        "path = filedialog.askdirectory(title='选择下载目录'); "
+        "root.destroy(); print(path or '', end='')"
+    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "python3", "-c", script,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=120)
+        return {"path": stdout.decode().strip()}
+    except asyncio.TimeoutError:
+        return {"path": ""}
+    except Exception:
+        return {"path": ""}
 
 
 @app.post("/execute")
@@ -146,18 +155,16 @@ async def execute(body: ExecuteRequest):
                 {"error": "已有下载任务在运行，请先停止"},
                 status_code=409,
             )
-        import os
         output_path = os.path.join(body.output, body.filename + ".mp4")
         cmd = build_ffmpeg_cmd(body.m3u8, output_path)
         ffmpeg_process = subprocess.Popen(
             cmd,
-            shell=True,
             stderr=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
             text=True,
             bufsize=1,
         )
-    return {"pid": ffmpeg_process.pid, "cmd": cmd}
+    return {"pid": ffmpeg_process.pid, "cmd": " ".join(shlex.quote(a) for a in cmd)}
 
 
 @app.post("/stop")
@@ -172,8 +179,6 @@ async def stop():
 
 @app.get("/progress")
 async def progress():
-    import json
-
     async def generate() -> AsyncGenerator[str, None]:
         global ffmpeg_process
         if ffmpeg_process is None:
@@ -185,6 +190,8 @@ async def progress():
                 continue
             yield f"data: {json.dumps({'line': line})}\n\n"
         rc = ffmpeg_process.wait()
+        with ffmpeg_lock:
+            ffmpeg_process = None
         if rc == 0:
             yield f"event: done\ndata: {json.dumps({'success': True})}\n\n"
         else:

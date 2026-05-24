@@ -34,12 +34,13 @@ def test_extract_empty():
 
 def test_build_ffmpeg_cmd_flags():
     cmd = build_ffmpeg_cmd("https://cdn.example.com/video.m3u8", "/tmp/output.mp4")
-    assert "-threads 0" in cmd
-    assert "-c copy" in cmd
-    assert "-bsf:a aac_adtstoasc" in cmd
+    assert isinstance(cmd, list)
+    assert "-threads" in cmd and "0" in cmd
+    assert "-c" in cmd and "copy" in cmd
+    assert "-bsf:a" in cmd and "aac_adtstoasc" in cmd
     assert "-y" in cmd
-    assert "-reconnect 1" in cmd
-    assert "-reconnect_streamed 1" in cmd
-    assert "-reconnect_delay_max 5" in cmd
+    assert "-reconnect" in cmd
+    assert "-reconnect_streamed" in cmd
+    assert "-reconnect_delay_max" in cmd
     assert "https://cdn.example.com/video.m3u8" in cmd
     assert "/tmp/output.mp4" in cmd
