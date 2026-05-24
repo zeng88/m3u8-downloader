@@ -33,7 +33,7 @@
 
 ```bash
 # 1. 克隆项目
-git clone https://github.com/your-username/m3u8-downloader.git
+git clone https://github.com/zeng88/m3u8-downloader.git
 cd m3u8-downloader
 
 # 2. 安装依赖
