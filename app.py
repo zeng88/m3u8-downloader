@@ -207,7 +207,192 @@ HTML_CONTENT = """<!DOCTYPE html>
 </div>
 <div class="toast" id="toast"></div>
 <script>
-PLACEHOLDER_JS
+let selectedM3u8 = '';
+let eventSource = null;
+let totalSeconds = null;
+
+fetch('/status').then(r => r.json()).then(d => {
+  if (!d.ffmpeg) document.getElementById('ffmpegWarn').style.display = 'block';
+});
+
+function showToast(msg, isError) {
+  isError = isError || false;
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast' + (isError ? ' error' : '') + ' show';
+  setTimeout(function() { el.className = 'toast'; }, 2500);
+}
+
+function setLoading(btnId, loading, text) {
+  const btn = document.getElementById(btnId);
+  btn.disabled = loading;
+  btn.innerHTML = loading ? '<span class="spinner"></span>' + text : text;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function doAnalyze() {
+  const url = document.getElementById('urlInput').value.trim();
+  if (!url) { showToast('请输入视频网址', true); return; }
+  setLoading('analyzeBtn', true, '分析中...');
+  document.getElementById('linksList').innerHTML =
+    '<div class="empty-hint"><span class="spinner"></span>正在抓取页面...</div>';
+  try {
+    const res = await fetch('/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: url })
+    });
+    const data = await res.json();
+    if (data.error) { showToast(data.error, true); renderLinks([]); return; }
+    renderLinks(data.links || []);
+  } catch (e) {
+    showToast('请求失败：' + e.message, true);
+    renderLinks([]);
+  } finally {
+    setLoading('analyzeBtn', false, '分析链接');
+  }
+}
+
+function renderLinks(links) {
+  const container = document.getElementById('linksList');
+  if (!links.length) {
+    container.innerHTML =
+      '<div class="empty-hint">未找到 M3U8 链接。<br>可用浏览器开发者工具（F12 → Network → 过滤 m3u8）手动查找后粘贴到上方输入框</div>';
+    selectedM3u8 = '';
+    updateCmd();
+    return;
+  }
+  container.innerHTML = '<div class="links-list">' + links.map(function(url, i) {
+    return '<div class="link-item' + (i === 0 ? ' selected' : '') +
+    '" onclick="selectLink(this, \'' + escHtml(url) + '\')">' +
+    '<input type="radio" name="m3u8" ' + (i === 0 ? 'checked' : '') + ' />' +
+    '<span class="link-url">' + escHtml(url) + '</span></div>';
+  }).join('') + '</div>';
+  selectedM3u8 = links[0];
+  updateCmd();
+}
+
+function selectLink(el, url) {
+  document.querySelectorAll('.link-item').forEach(function(e) { e.classList.remove('selected'); });
+  el.classList.add('selected');
+  el.querySelector('input[type="radio"]').checked = true;
+  selectedM3u8 = url;
+  updateCmd();
+}
+
+async function doPickDir() {
+  const res = await fetch('/pick-dir', { method: 'POST' });
+  const data = await res.json();
+  if (data.path) {
+    document.getElementById('dirInput').value = data.path;
+    updateCmd();
+  }
+}
+
+function updateCmd() {
+  const m3u8 = selectedM3u8;
+  const dir = document.getElementById('dirInput').value.trim();
+  const filename = document.getElementById('filenameInput').value.trim() || 'video';
+  const cmdBlock = document.getElementById('cmdBlock');
+  if (!m3u8) { cmdBlock.textContent = '（请先分析并选择一个 M3U8 链接）'; return; }
+  const ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+  const outputPath = (dir ? dir + '/' : '') + filename + '.mp4';
+  cmdBlock.textContent = [
+    'ffmpeg -threads 0',
+    '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+    '-user_agent "' + ua + '"',
+    '-i "' + m3u8 + '"',
+    '-c copy -bsf:a aac_adtstoasc -y',
+    '"' + outputPath + '"'
+  ].join(' \\\n  ');
+}
+
+async function doCopy() {
+  const cmd = document.getElementById('cmdBlock').textContent;
+  if (cmd.startsWith('（')) { showToast('请先生成命令', true); return; }
+  await navigator.clipboard.writeText(cmd);
+  showToast('已复制到剪贴板');
+}
+
+async function doExecute() {
+  const btn = document.getElementById('executeBtn');
+  if (btn.dataset.state === 'running') { doStop(); return; }
+  if (!selectedM3u8) { showToast('请先选择 M3U8 链接', true); return; }
+  const dir = document.getElementById('dirInput').value.trim();
+  const filename = document.getElementById('filenameInput').value.trim() || 'video';
+  if (!dir) { showToast('请选择保存目录', true); return; }
+  const res = await fetch('/execute', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ m3u8: selectedM3u8, output: dir, filename: filename })
+  });
+  const data = await res.json();
+  if (data.error) { showToast(data.error, true); return; }
+  btn.textContent = '停止下载';
+  btn.className = 'btn-red';
+  btn.dataset.state = 'running';
+  const wrap = document.getElementById('progressWrap');
+  wrap.style.display = 'block';
+  document.getElementById('progressLog').textContent = '';
+  document.getElementById('progressBar').style.width = '0%';
+  totalSeconds = null;
+  startSSE();
+}
+
+async function doStop() {
+  await fetch('/stop', { method: 'POST' });
+  resetExecuteBtn();
+  if (eventSource) { eventSource.close(); eventSource = null; }
+  showToast('已停止下载');
+}
+
+function resetExecuteBtn() {
+  const btn = document.getElementById('executeBtn');
+  btn.textContent = '开始下载';
+  btn.className = 'btn-green';
+  btn.dataset.state = '';
+}
+
+function startSSE() {
+  if (eventSource) eventSource.close();
+  eventSource = new EventSource('/progress');
+  eventSource.onmessage = function(e) {
+    const data = JSON.parse(e.data);
+    if (data.error) { showToast(data.error, true); return; }
+    const line = data.line || '';
+    const log = document.getElementById('progressLog');
+    log.textContent = line;
+    const timeMatch = line.match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/);
+    if (timeMatch) {
+      const elapsed = parseInt(timeMatch[1]) * 3600 + parseInt(timeMatch[2]) * 60 + parseFloat(timeMatch[3]);
+      if (totalSeconds) {
+        document.getElementById('progressBar').style.width =
+          Math.min(100, (elapsed / totalSeconds) * 100) + '%';
+      } else {
+        document.getElementById('progressBar').style.width = (elapsed % 30) / 30 * 100 + '%';
+      }
+    }
+    const durMatch = line.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+    if (durMatch) {
+      totalSeconds = parseInt(durMatch[1]) * 3600 + parseInt(durMatch[2]) * 60 + parseFloat(durMatch[3]);
+    }
+  };
+  eventSource.addEventListener('done', function(e) {
+    eventSource.close(); eventSource = null;
+    const data = JSON.parse(e.data);
+    resetExecuteBtn();
+    document.getElementById('progressBar').style.width = data.success ? '100%' : '0%';
+    showToast(data.success ? '下载完成！' : ('下载失败（退出码 ' + data.code + '）'), !data.success);
+  });
+  eventSource.onerror = function() {
+    eventSource.close(); eventSource = null;
+    resetExecuteBtn();
+    showToast('连接中断', true);
+  };
+}
 </script>
 </body>
 </html>
