@@ -115,5 +115,27 @@ async def analyze(body: AnalyzeRequest):
         return JSONResponse({"error": f"分析失败：{str(e)}"}, status_code=500)
 
 
+@app.post("/pick-dir")
+async def pick_dir():
+    result = {"path": ""}
+    event = threading.Event()
+
+    def _open_dialog():
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.wm_attributes("-topmost", True)
+        path = filedialog.askdirectory(title="选择下载目录")
+        root.destroy()
+        result["path"] = path or ""
+        event.set()
+
+    t = threading.Thread(target=_open_dialog, daemon=True)
+    t.start()
+    event.wait(timeout=120)
+    return result
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8888)
