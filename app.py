@@ -137,5 +137,38 @@ async def pick_dir():
     return result
 
 
+@app.post("/execute")
+async def execute(body: ExecuteRequest):
+    global ffmpeg_process
+    with ffmpeg_lock:
+        if ffmpeg_process and ffmpeg_process.poll() is None:
+            return JSONResponse(
+                {"error": "已有下载任务在运行，请先停止"},
+                status_code=409,
+            )
+        import os
+        output_path = os.path.join(body.output, body.filename + ".mp4")
+        cmd = build_ffmpeg_cmd(body.m3u8, output_path)
+        ffmpeg_process = subprocess.Popen(
+            cmd,
+            shell=True,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            text=True,
+            bufsize=1,
+        )
+    return {"pid": ffmpeg_process.pid, "cmd": cmd}
+
+
+@app.post("/stop")
+async def stop():
+    global ffmpeg_process
+    with ffmpeg_lock:
+        if ffmpeg_process and ffmpeg_process.poll() is None:
+            ffmpeg_process.terminate()
+            return {"ok": True}
+    return {"ok": False, "reason": "无活跃进程"}
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8888)
