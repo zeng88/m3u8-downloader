@@ -47,20 +47,25 @@ def extract_m3u8_links(html: str) -> list[str]:
     return found
 
 
-def build_ffmpeg_cmd(m3u8: str, output_path: str) -> list[str]:
-    return [
+def build_ffmpeg_cmd(m3u8: str, output_path: str, referer: str = "") -> list[str]:
+    cmd = [
         "ffmpeg",
         "-threads", "0",
         "-reconnect", "1",
         "-reconnect_streamed", "1",
         "-reconnect_delay_max", "5",
         "-user_agent", USER_AGENT,
+    ]
+    if referer:
+        cmd += ["-referer", referer, "-headers", f"Origin: {referer.rstrip('/')}\r\n"]
+    cmd += [
         "-i", m3u8,
         "-c", "copy",
         "-bsf:a", "aac_adtstoasc",
         "-y",
         output_path,
     ]
+    return cmd
 
 
 HTML_CONTENT = """<!DOCTYPE html>
@@ -191,6 +196,10 @@ HTML_CONTENT = """<!DOCTYPE html>
         <input type="text" id="filenameInput" placeholder="my-video" oninput="updateCmd()" />
       </div>
     </div>
+    <div class="config-item" style="margin-top:.8rem">
+      <label>来源网址（Referer，遇到 403 时填写视频所在页面）</label>
+      <input type="text" id="refererInput" placeholder="https://www.example.com/video-page" oninput="updateCmd()" />
+    </div>
   </div>
   <div class="card">
     <div class="card-label">④ ffmpeg 命令</div>
@@ -248,6 +257,10 @@ async function doAnalyze() {
     const data = await res.json();
     if (data.error) { showToast(data.error, true); renderLinks([]); return; }
     renderLinks(data.links || []);
+    if (!document.getElementById('refererInput').value) {
+      document.getElementById('refererInput').value = url;
+      updateCmd();
+    }
   } catch (e) {
     showToast('请求失败：' + e.message, true);
     renderLinks([]);
@@ -300,18 +313,25 @@ function updateCmd() {
   const m3u8 = selectedM3u8;
   const dir = document.getElementById('dirInput').value.trim();
   const filename = document.getElementById('filenameInput').value.trim() || 'video';
+  const referer = document.getElementById('refererInput').value.trim();
   const cmdBlock = document.getElementById('cmdBlock');
   if (!m3u8) { cmdBlock.textContent = '（请先分析并选择一个 M3U8 链接）'; return; }
   const ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
   const outputPath = (dir ? dir + '/' : '') + filename + '.mp4';
-  cmdBlock.textContent = [
+  const parts = [
     'ffmpeg -threads 0',
     '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
     '-user_agent "' + ua + '"',
-    '-i "' + m3u8 + '"',
-    '-c copy -bsf:a aac_adtstoasc -y',
-    '"' + outputPath + '"'
-  ].join(' \\\n  ');
+  ];
+  if (referer) {
+    parts.push('-referer "' + referer + '"');
+    try {
+      const origin = new URL(referer).origin;
+      parts.push('-headers "Origin: ' + origin + '\\r\\n"');
+    } catch (e) {}
+  }
+  parts.push('-i "' + m3u8 + '"', '-c copy -bsf:a aac_adtstoasc -y', '"' + outputPath + '"');
+  cmdBlock.textContent = parts.join(' \\\n  ');
 }
 
 async function doCopy() {
@@ -332,7 +352,7 @@ async function doExecute() {
     const res = await fetch('/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ m3u8: selectedM3u8, output: dir, filename: filename })
+      body: JSON.stringify({ m3u8: selectedM3u8, output: dir, filename: filename, referer: document.getElementById('refererInput').value.trim() })
     });
     const data = await res.json();
     if (data.error) { showToast(data.error, true); return; }
@@ -426,6 +446,7 @@ class ExecuteRequest(BaseModel):
     m3u8: str
     output: str
     filename: str
+    referer: str = ""
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -498,7 +519,7 @@ async def execute(body: ExecuteRequest):
                 status_code=409,
             )
         output_path = os.path.join(body.output, body.filename + ".mp4")
-        cmd = build_ffmpeg_cmd(body.m3u8, output_path)
+        cmd = build_ffmpeg_cmd(body.m3u8, output_path, body.referer)
         ffmpeg_process = subprocess.Popen(
             cmd,
             stderr=subprocess.PIPE,
