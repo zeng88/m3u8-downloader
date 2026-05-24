@@ -87,5 +87,33 @@ async def status():
     return {"ffmpeg": FFMPEG_AVAILABLE}
 
 
+@app.post("/analyze")
+async def analyze(body: AnalyzeRequest):
+    url = body.url.strip()
+    if not url.startswith("http"):
+        return JSONResponse({"error": "请输入有效的 http/https 网址"}, status_code=400)
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        referer = f"{parsed.scheme}://{parsed.netloc}/"
+        resp = http_requests.get(url, timeout=15, headers={
+            "User-Agent": USER_AGENT,
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Referer": referer,
+        })
+        resp.raise_for_status()
+        links = extract_m3u8_links(resp.text)
+        return {"links": links}
+    except http_requests.exceptions.Timeout:
+        return JSONResponse({"error": "请求超时，请检查网址或网络连接"}, status_code=504)
+    except http_requests.exceptions.HTTPError as e:
+        return JSONResponse(
+            {"error": f"页面请求失败：HTTP {e.response.status_code}"},
+            status_code=502,
+        )
+    except Exception as e:
+        return JSONResponse({"error": f"分析失败：{str(e)}"}, status_code=500)
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8888)
