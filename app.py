@@ -538,4 +538,13 @@ async def progress():
 
 
 if __name__ == "__main__":
+    import webbrowser
+
+    def _open_browser():
+        import time
+        time.sleep(0.8)
+        webbrowser.open("http://localhost:8888")
+
+    threading.Thread(target=_open_browser, daemon=True).start()
+    print("M3U8 下载助手已启动：http://localhost:8888")
     uvicorn.run(app, host="127.0.0.1", port=8888)
