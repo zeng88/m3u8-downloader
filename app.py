@@ -22,6 +22,38 @@ USER_AGENT = (
     "Chrome/124.0.0.0 Safari/537.36"
 )
 
+
+def extract_m3u8_links(html: str) -> list[str]:
+    # First normalize escaped slashes in the HTML
+    normalized_html = html.replace("\\u002F", "/").replace("\\/", "/")
+
+    patterns = [
+        r'https?://[^\s\'"<>]+\.m3u8[^\s\'"<>]*',
+        r'"(?:url|src|hls|stream|playUrl|hlsUrl|m3u8Url)"\s*:\s*"(https?://[^"]+\.m3u8[^"]*)"',
+        r"'(https?://[^']+\.m3u8[^']*)'",
+    ]
+    found = []
+    seen = set()
+    for pattern in patterns:
+        for match in re.finditer(pattern, normalized_html, re.IGNORECASE):
+            url = match.group(1) if match.lastindex else match.group(0)
+            if url not in seen:
+                seen.add(url)
+                found.append(url)
+    return found
+
+
+def build_ffmpeg_cmd(m3u8: str, output_path: str) -> str:
+    return (
+        f'ffmpeg -threads 0 '
+        f'-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 '
+        f'-user_agent "{USER_AGENT}" '
+        f'-i "{m3u8}" '
+        f'-c copy -bsf:a aac_adtstoasc -y '
+        f'"{output_path}"'
+    )
+
+
 HTML_CONTENT = "<html><body><h1>Coming soon</h1></body></html>"
 
 
