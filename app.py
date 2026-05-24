@@ -267,7 +267,7 @@ function renderLinks(links) {
   }
   container.innerHTML = '<div class="links-list">' + links.map(function(url, i) {
     return '<div class="link-item' + (i === 0 ? ' selected' : '') +
-    '" onclick="selectLink(this, \'' + escHtml(url) + '\')">' +
+    '" data-url="' + escHtml(url) + '" onclick="selectLink(this)">' +
     '<input type="radio" name="m3u8" ' + (i === 0 ? 'checked' : '') + ' />' +
     '<span class="link-url">' + escHtml(url) + '</span></div>';
   }).join('') + '</div>';
@@ -275,20 +275,24 @@ function renderLinks(links) {
   updateCmd();
 }
 
-function selectLink(el, url) {
+function selectLink(el) {
   document.querySelectorAll('.link-item').forEach(function(e) { e.classList.remove('selected'); });
   el.classList.add('selected');
   el.querySelector('input[type="radio"]').checked = true;
-  selectedM3u8 = url;
+  selectedM3u8 = el.dataset.url;
   updateCmd();
 }
 
 async function doPickDir() {
-  const res = await fetch('/pick-dir', { method: 'POST' });
-  const data = await res.json();
-  if (data.path) {
-    document.getElementById('dirInput').value = data.path;
-    updateCmd();
+  try {
+    const res = await fetch('/pick-dir', { method: 'POST' });
+    const data = await res.json();
+    if (data.path) {
+      document.getElementById('dirInput').value = data.path;
+      updateCmd();
+    }
+  } catch (e) {
+    showToast('目录选择失败：' + e.message, true);
   }
 }
 
@@ -324,22 +328,27 @@ async function doExecute() {
   const dir = document.getElementById('dirInput').value.trim();
   const filename = document.getElementById('filenameInput').value.trim() || 'video';
   if (!dir) { showToast('请选择保存目录', true); return; }
-  const res = await fetch('/execute', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ m3u8: selectedM3u8, output: dir, filename: filename })
-  });
-  const data = await res.json();
-  if (data.error) { showToast(data.error, true); return; }
-  btn.textContent = '停止下载';
-  btn.className = 'btn-red';
-  btn.dataset.state = 'running';
-  const wrap = document.getElementById('progressWrap');
-  wrap.style.display = 'block';
-  document.getElementById('progressLog').textContent = '';
-  document.getElementById('progressBar').style.width = '0%';
-  totalSeconds = null;
-  startSSE();
+  try {
+    const res = await fetch('/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ m3u8: selectedM3u8, output: dir, filename: filename })
+    });
+    const data = await res.json();
+    if (data.error) { showToast(data.error, true); return; }
+    btn.textContent = '停止下载';
+    btn.className = 'btn-red';
+    btn.dataset.state = 'running';
+    const wrap = document.getElementById('progressWrap');
+    wrap.style.display = 'block';
+    document.getElementById('progressLog').textContent = '';
+    document.getElementById('progressBar').style.width = '0%';
+    totalSeconds = null;
+    startSSE();
+  } catch (e) {
+    showToast('执行失败：' + e.message, true);
+    resetExecuteBtn();
+  }
 }
 
 async function doStop() {
