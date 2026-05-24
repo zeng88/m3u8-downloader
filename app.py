@@ -170,5 +170,32 @@ async def stop():
     return {"ok": False, "reason": "无活跃进程"}
 
 
+@app.get("/progress")
+async def progress():
+    import json
+
+    async def generate() -> AsyncGenerator[str, None]:
+        global ffmpeg_process
+        if ffmpeg_process is None:
+            yield 'data: {"error": "无活跃的下载任务"}\n\n'
+            return
+        for line in ffmpeg_process.stderr:
+            line = line.strip()
+            if not line:
+                continue
+            yield f"data: {json.dumps({'line': line})}\n\n"
+        rc = ffmpeg_process.wait()
+        if rc == 0:
+            yield f"event: done\ndata: {json.dumps({'success': True})}\n\n"
+        else:
+            yield f"event: done\ndata: {json.dumps({'success': False, 'code': rc})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8888)
