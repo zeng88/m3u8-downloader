@@ -1,3 +1,4 @@
+import html as html_lib
 import json
 import os
 import re
@@ -28,8 +29,9 @@ USER_AGENT = (
 
 
 def extract_m3u8_links(html: str) -> list[str]:
-    # First normalize escaped slashes in the HTML
+    # Normalize escaped slashes, then decode HTML entities (&amp; -> & etc.)
     normalized_html = html.replace("\\u002F", "/").replace("\\/", "/")
+    normalized_html = html_lib.unescape(normalized_html)
 
     patterns = [
         r'https?://[^\s\'"<>]+\.m3u8[^\s\'"<>]*',
@@ -41,6 +43,7 @@ def extract_m3u8_links(html: str) -> list[str]:
     for pattern in patterns:
         for match in re.finditer(pattern, normalized_html, re.IGNORECASE):
             url = match.group(1) if match.lastindex else match.group(0)
+            url = url.rstrip(".,;:)")
             if url not in seen:
                 seen.add(url)
                 found.append(url)
@@ -61,7 +64,6 @@ def build_ffmpeg_cmd(m3u8: str, output_path: str, referer: str = "") -> list[str
     cmd += [
         "-i", m3u8,
         "-c", "copy",
-        "-bsf:a", "aac_adtstoasc",
         "-y",
         output_path,
     ]
@@ -127,7 +129,17 @@ HTML_CONTENT = """<!DOCTYPE html>
   .link-item:hover { border-color: #58a6ff; }
   .link-item.selected { border-color: #58a6ff; background: #0d2045; }
   .link-item input[type="radio"] { accent-color: #58a6ff; flex-shrink: 0; }
-  .link-url { font-size: .82rem; color: #8b949e; word-break: break-all; font-family: monospace; }
+  .link-url { font-size: .82rem; color: #8b949e; word-break: break-all; font-family: monospace; flex: 1; }
+  .btn-edit {
+    background: transparent; color: #58a6ff; border: 1px solid #30363d;
+    padding: .25rem .55rem; font-size: .75rem; border-radius: 6px; flex-shrink: 0;
+  }
+  .btn-edit:hover { background: #21262d; }
+  .link-edit-input {
+    flex: 1; background: #0d1117; border: 1px solid #58a6ff; border-radius: 4px;
+    color: #c9d1d9; font-size: .82rem; font-family: monospace; padding: .2rem .5rem;
+    outline: none;
+  }
   .empty-hint { color: #484f58; font-size: .88rem; text-align: center; padding: 1rem; }
   .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
   @media (max-width: 540px) { .config-grid { grid-template-columns: 1fr; } }
@@ -282,7 +294,9 @@ function renderLinks(links) {
     return '<div class="link-item' + (i === 0 ? ' selected' : '') +
     '" data-url="' + escHtml(url) + '" onclick="selectLink(this)">' +
     '<input type="radio" name="m3u8" ' + (i === 0 ? 'checked' : '') + ' />' +
-    '<span class="link-url">' + escHtml(url) + '</span></div>';
+    '<span class="link-url">' + escHtml(url) + '</span>' +
+    '<button class="btn-edit" onclick="startEdit(event,this)">编辑</button>' +
+    '</div>';
   }).join('') + '</div>';
   selectedM3u8 = links[0];
   updateCmd();
@@ -294,6 +308,53 @@ function selectLink(el) {
   el.querySelector('input[type="radio"]').checked = true;
   selectedM3u8 = el.dataset.url;
   updateCmd();
+}
+
+function startEdit(evt, btn) {
+  evt.stopPropagation();
+  var item = btn.closest('.link-item');
+  var urlSpan = item.querySelector('.link-url');
+  var currentUrl = item.dataset.url;
+
+  var input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'link-edit-input';
+  input.value = currentUrl;
+  input.onclick = function(e) { e.stopPropagation(); };
+  input.onkeydown = function(e) {
+    if (e.key === 'Enter') { e.stopPropagation(); confirmEdit(item, input, btn, currentUrl); }
+    if (e.key === 'Escape') { e.stopPropagation(); cancelEdit(item, input, btn, currentUrl); }
+  };
+  urlSpan.replaceWith(input);
+  input.focus(); input.select();
+
+  btn.textContent = '确认';
+  btn.onclick = function(e) { e.stopPropagation(); confirmEdit(item, input, btn, currentUrl); };
+}
+
+function confirmEdit(item, input, btn, oldUrl) {
+  var newUrl = input.value.trim();
+  if (!newUrl) { newUrl = oldUrl; }
+  item.dataset.url = newUrl;
+  var span = document.createElement('span');
+  span.className = 'link-url';
+  span.textContent = newUrl;
+  input.replaceWith(span);
+  btn.textContent = '编辑';
+  btn.onclick = function(e) { e.stopPropagation(); startEdit(e, btn); };
+  if (item.classList.contains('selected')) {
+    selectedM3u8 = newUrl;
+    updateCmd();
+  }
+}
+
+function cancelEdit(item, input, btn, oldUrl) {
+  var span = document.createElement('span');
+  span.className = 'link-url';
+  span.textContent = oldUrl;
+  input.replaceWith(span);
+  btn.textContent = '编辑';
+  btn.onclick = function(e) { e.stopPropagation(); startEdit(e, btn); };
 }
 
 async function doPickDir() {
@@ -330,7 +391,7 @@ function updateCmd() {
       parts.push('-headers "Origin: ' + origin + '\\r\\n"');
     } catch (e) {}
   }
-  parts.push('-i "' + m3u8 + '"', '-c copy -bsf:a aac_adtstoasc -y', '"' + outputPath + '"');
+  parts.push('-i "' + m3u8 + '"', '-c copy -y', '"' + outputPath + '"');
   cmdBlock.textContent = parts.join(' \\\n  ');
 }
 
@@ -512,6 +573,10 @@ async def pick_dir():
 @app.post("/execute")
 async def execute(body: ExecuteRequest):
     global ffmpeg_process
+    if not os.path.isdir(body.output):
+        return JSONResponse({"error": f"保存目录不存在：{body.output}"}, status_code=400)
+    if not os.access(body.output, os.W_OK):
+        return JSONResponse({"error": f"保存目录无写入权限：{body.output}"}, status_code=400)
     with ffmpeg_lock:
         if ffmpeg_process and ffmpeg_process.poll() is None:
             return JSONResponse(
