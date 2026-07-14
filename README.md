@@ -132,6 +132,12 @@ chmod +x install.sh install-mac.command start.sh start.command
 lsof -nP -iTCP:8888 -sTCP:LISTEN
 ```
 
+确认占用端口的不是需要保留的服务后，可强制释放 8888 端口，再重新启动：
+
+```bash
+lsof -ti:8888 | xargs kill -9
+```
+
 ---
 
 ## 使用说明
