@@ -84,6 +84,56 @@ sudo apt-get install -y python3 python3-pip python3-venv ffmpeg
 
 ---
 
+## 一键安装与启动脚本
+
+脚本均位于项目根目录。首次使用先运行安装脚本，之后直接运行启动脚本即可。
+
+| 平台 | 安装依赖 | 启动项目 |
+|------|----------|----------|
+| macOS 双击 | `install-mac.command` | `start.command` |
+| macOS/Linux 终端 | `./install.sh` | `./start.sh` |
+| Windows 双击 | `install-windows.bat` | `start.bat` |
+
+### 安装脚本做什么
+
+- macOS/Linux 检查 Python 3.9+ 和 ffmpeg；缺少时尝试使用 Homebrew、apt、dnf 或 pacman 安装。
+- Windows 通过 winget 检查/安装 Python 3.12 和 ffmpeg；如果找不到 winget，请先安装 Microsoft Store 中的“应用安装程序（App Installer）”。
+- 所有平台都会创建项目根目录 `.venv`，并将 `requirements.txt` 安装到虚拟环境中。
+- 安装脚本可以重复运行，已经满足要求的依赖会复用，不会安装到系统全局 Python 环境。
+
+### 启动脚本做什么
+
+- 启动前检查 `.venv`、FastAPI 依赖、Python 版本和 ffmpeg；检查失败时请先重新运行安装脚本。
+- 检查 `http://localhost:8888/status`：如果本项目已经运行，只打开浏览器，不重复启动服务。
+- 如果 8888 被其他程序占用，会提示释放端口，不会强制终止未知进程。
+- 服务就绪后自动打开 `http://localhost:8888`；关闭启动窗口会停止由该窗口启动的服务。
+
+### 常见问题
+
+**macOS 提示“无法打开”或“没有执行权限”**
+
+在终端执行：
+
+```bash
+chmod +x install.sh install-mac.command start.sh start.command
+```
+
+然后重新运行对应脚本。
+
+**Windows 安装后仍找不到 Python 或 ffmpeg**
+
+关闭当前命令窗口，重新打开项目目录，再运行 `install-windows.bat`。winget 安装程序修改环境变量后，旧窗口通常不会自动刷新。
+
+**启动提示 8888 端口被占用**
+
+先确认是否已有本项目服务；如果不是本项目，请手动关闭占用程序后再启动。macOS/Linux 可执行：
+
+```bash
+lsof -nP -iTCP:8888 -sTCP:LISTEN
+```
+
+---
+
 ## 使用说明
 
 ### 基本流程

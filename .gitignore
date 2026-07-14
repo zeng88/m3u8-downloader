@@ -1,4 +1,23 @@
+# 项目文档由外部工作流生成，避免本地文档产物进入源码仓库。
+docs/
+
+# Python 虚拟环境、缓存和本地构建产物。
 *.DS_Store
 __pycache__/
 *.pyc
 .venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# 测试覆盖率和运行日志。
+.coverage
+htmlcov/
+*.log
+
+# 编辑器和操作系统本地配置。
+.idea/
+.vscode/
