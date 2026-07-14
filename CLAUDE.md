@@ -5,22 +5,35 @@
 ## 常用命令
 
 ```bash
-# 安装依赖
-pip install -r requirements.txt
+# 推荐：按平台一键安装依赖
+./install.sh                         # macOS/Linux 终端
+# macOS 也可以双击 install-mac.command
+# Windows 双击 install-windows.bat
 
-# 启动应用（自动打开浏览器 http://localhost:8888）
-python app.py
+# 推荐：按平台一键启动
+./start.sh                           # macOS/Linux 终端
+# macOS 也可以双击 start.command
+# Windows 双击 start.bat
+
+# 手动安装依赖到项目虚拟环境
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+
+# 手动启动应用（自动打开浏览器 http://localhost:8888）
+.venv/bin/python app.py
 
 # 运行全部测试
 pip install pytest
-pytest test_app.py -v
+pytest test_app.py test_launch_scripts.py -v
 
 # 运行单个测试
 pytest test_app.py::test_extract_direct_url -v
 
-# 端口 8888 被占用时，强制释放
-lsof -ti:8888 | xargs kill -9
+# 查看 8888 端口占用者；启动脚本不会强制杀掉未知进程
+lsof -nP -iTCP:8888 -sTCP:LISTEN
 ```
+
+一键安装脚本会创建项目根目录 `.venv`，并安装 `requirements.txt` 中的 Python 依赖和系统 `ffmpeg`。一键启动脚本只检查依赖；如果缺少依赖，会提示重新运行安装脚本，不会自动修改全局 Python 环境。
 
 ## 架构说明
 
@@ -47,6 +60,6 @@ lsof -ti:8888 | xargs kill -9
 - `build_ffmpeg_cmd()` 在提供 referer 时注入 `-referer` 和 `-headers Origin:`，用于绕过 CDN 防盗链（403）。
 - `/pick-dir` 将 `tkinter` 放在独立 `python3` 子进程中运行，因为 tkinter 与 asyncio 事件循环不兼容。
 
-## 已知问题
+## 运行约定
 
-`test_app.py` 中的 `test_build_ffmpeg_cmd_flags` 断言 ffmpeg 命令包含 `-bsf:a` / `aac_adtstoasc`，但 `build_ffmpeg_cmd()` 实际不含这两个参数，该测试目前会失败。
+`build_ffmpeg_cmd()` 会为 AAC 音频注入 `-bsf:a aac_adtstoasc`，保证 MP4 封装兼容性；启动/安装脚本不会强制杀掉未知端口进程。

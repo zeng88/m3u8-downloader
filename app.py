@@ -64,6 +64,8 @@ def build_ffmpeg_cmd(m3u8: str, output_path: str, referer: str = "") -> list[str
     cmd += [
         "-i", m3u8,
         "-c", "copy",
+        # 修复 AAC 音频封装到 MP4 时的时间戳兼容性问题。
+        "-bsf:a", "aac_adtstoasc",
         "-y",
         output_path,
     ]
@@ -632,14 +634,20 @@ async def progress():
     )
 
 
+def should_open_browser() -> bool:
+    # 一键启动脚本会等待健康检查后打开浏览器，避免重复打开标签页。
+    return os.environ.get("M3U8_DOWNLOADER_NO_BROWSER") != "1"
+
+
 if __name__ == "__main__":
     import webbrowser
 
-    def _open_browser():
-        import time
-        time.sleep(0.8)
-        webbrowser.open("http://localhost:8888")
+    if should_open_browser():
+        def _open_browser():
+            import time
+            time.sleep(0.8)
+            webbrowser.open("http://localhost:8888")
 
-    threading.Thread(target=_open_browser, daemon=True).start()
+        threading.Thread(target=_open_browser, daemon=True).start()
     print("M3U8 下载助手已启动：http://localhost:8888")
     uvicorn.run(app, host="127.0.0.1", port=8888)

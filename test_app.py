@@ -1,5 +1,5 @@
 import pytest
-from app import extract_m3u8_links, build_ffmpeg_cmd
+from app import extract_m3u8_links, build_ffmpeg_cmd, should_open_browser
 
 
 def test_extract_direct_url():
@@ -44,3 +44,13 @@ def test_build_ffmpeg_cmd_flags():
     assert "-reconnect_delay_max" in cmd
     assert "https://cdn.example.com/video.m3u8" in cmd
     assert "/tmp/output.mp4" in cmd
+
+
+def test_should_open_browser_can_be_disabled(monkeypatch):
+    monkeypatch.setenv("M3U8_DOWNLOADER_NO_BROWSER", "1")
+    assert should_open_browser() is False
+
+
+def test_should_open_browser_defaults_to_enabled(monkeypatch):
+    monkeypatch.delenv("M3U8_DOWNLOADER_NO_BROWSER", raising=False)
+    assert should_open_browser() is True

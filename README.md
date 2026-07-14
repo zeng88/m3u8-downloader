@@ -27,25 +27,60 @@
 | ffmpeg | 任意 | `brew install ffmpeg` |
 | tkinter | 内置 | Python 标准库，无需额外安装 |
 
+安装脚本会把 Python 包安装到项目根目录的 `.venv`，不会污染系统 Python 环境。
+
 ---
 
 ## 快速开始
+
+### macOS
+
+1. 双击 `install-mac.command`，或在终端执行：
+
+```bash
+./install.sh
+```
+
+2. 安装完成后双击 `start.command`，或执行：
+
+```bash
+./start.sh
+```
+
+### Windows
+
+1. 双击 `install-windows.bat`，脚本会通过 winget 检测/安装 Python 和 ffmpeg，并创建 `.venv`。
+2. 安装完成后双击 `start.bat`。
+
+### 手动安装
 
 ```bash
 # 1. 克隆项目
 git clone https://github.com/zeng88/m3u8-downloader.git
 cd m3u8-downloader
 
-# 2. 安装依赖
-pip install -r requirements.txt
+# 2. 创建虚拟环境并安装依赖
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
 
-# 3. 启动
-python app.py
+# 3. 手动启动
+.venv/bin/python app.py
 ```
 
-启动后浏览器自动打开 `http://localhost:8888`。
+启动脚本会检查 Python 3.9+、`.venv` 中的 `fastapi`/`uvicorn`/`requests` 和系统 `ffmpeg`。如果缺少依赖，请先运行对应平台的安装脚本。
 
-> 如果端口被占用，先执行 `lsof -ti:8888 | xargs kill -9` 再重启。
+启动成功后浏览器会自动打开 `http://localhost:8888`。如果 8888 端口已经是本项目服务，启动脚本只会打开已有服务；如果被其他程序占用，脚本会提示释放端口，不会强制结束未知进程。
+
+如需手动安装系统工具：
+
+```bash
+# macOS
+brew install python ffmpeg
+
+# Debian/Ubuntu
+sudo apt-get update
+sudo apt-get install -y python3 python3-pip python3-venv ffmpeg
+```
 
 ---
 
@@ -82,10 +117,20 @@ m3u8-downloader/
 ├── app.py            # 全部源码（FastAPI 后端 + 内嵌前端）
 ├── requirements.txt  # Python 依赖
 ├── test_app.py       # 单元测试
+├── test_launch_scripts.py # 启动/安装脚本静态测试
+├── install.sh        # macOS/Linux 终端安装
+├── install-mac.command # macOS 双击安装
+├── install-windows.bat  # Windows 双击安装入口
+├── install-windows.ps1  # Windows 安装实现
+├── start.sh          # macOS/Linux 终端启动
+├── start.command     # macOS 双击启动
+├── start.bat         # Windows 双击启动入口
+├── start-windows.ps1 # Windows 启动实现
 └── README.md
+
 ```
 
-单文件设计，无需构建工具，`python app.py` 即可运行。
+单文件业务设计，无需构建工具；首次运行使用平台安装脚本，之后可直接使用一键启动脚本。
 
 ---
 
@@ -142,8 +187,8 @@ ffmpeg -threads 0 \
 ## 运行测试
 
 ```bash
-pip install pytest
-pytest test_app.py -v
+python3 -m pip install pytest
+python3 -m pytest test_app.py test_launch_scripts.py -v
 ```
 
 ---
